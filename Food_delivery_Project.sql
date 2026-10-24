@@ -864,3 +864,377 @@ FROM orders
 WHERE order_time IS NOT NULL
 GROUP BY HOUR(order_time)
 ORDER BY total_orders DESC;
+
+# Analyze Order Status
+SELECT order_status,
+count(*) AS Total_order
+from orders
+group by order_status 
+order by Total_order DESC;
+
+# Calculate Order Status Percentage
+
+SELECT order_status,
+COUNT(*) AS total_orders,
+ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM orders),2) AS order_percentage
+FROM orders
+GROUP BY order_status
+ORDER BY total_orders DESC;
+
+# Analyze Revenue by Order Status
+SELECT o.order_status,
+COUNT(*) AS total_items,
+SUM(oi.total_price) AS total_revenue
+FROM orders o
+INNER JOIN order_items oi
+ON o.order_id = oi.order_id
+GROUP BY o.order_status;
+
+# Calculate Delivered Revenue Percentage
+SELECT ROUND(SUM(oi.total_price) * 100.0 /
+ (SELECT SUM(total_price) FROM order_items),2) AS delivered_value_percentage
+FROM orders o
+INNER JOIN order_items oi
+    ON o.order_id = oi.order_id
+WHERE o.order_status = 'Delivered';
+
+# Let's identify which months have the highest number of orders.
+SELECT
+MONTH(order_date) AS Order_Month,
+COUNT(*) AS Total_Orders
+FROM orders
+GROUP BY MONTH(order_date)
+ORDER BY Order_Month DESC;
+
+# Monthly Revenue Analysis
+SELECT
+MONTH(o.order_date) AS Order_Month,
+ROUND(SUM(oi.total_price), 2) AS Monthly_Revenue
+FROM orders o
+INNER JOIN order_items oi
+ON o.order_id = oi.order_id
+WHERE o.order_status = 'Delivered'
+GROUP BY MONTH(o.order_date)
+ORDER BY Order_Month;
+
+# Analyze Orders by Day of the Week
+SELECT
+dayname(order_date) AS Order_Day,
+count(*) AS Total_order
+from orders
+group by dayname(order_date)
+order by Total_order DESC;
+
+describe orders;
+
+# Analyze Average Order Value
+Select ROUND(AVG(total_amount),2) AS Average_Order_Value
+from orders 
+where order_status = 'Delivered';
+
+# Top 10 Restaurants by Delivered Orders
+SELECT r.restaurant_name,
+count(o.order_id) AS delivered_orders
+from orders o
+JOIN swiggy_restaurants r
+ON o.restaurant_id = r.restaurant_id
+WHERE o.order_status = 'Delivered'
+group by r.restaurant_name
+order by delivered_orders DESC Limit 10;
+
+# Top 10 Restaurants by Revenue
+SELECT
+r.restaurant_name,
+ROUND(SUM(oi.total_price), 2) AS total_revenue
+FROM orders o
+JOIN swiggy_restaurants r
+ON o.restaurant_id = r.restaurant_id
+JOIN order_items oi
+ON o.order_id = oi.order_id
+WHERE o.order_status = 'Delivered'
+GROUP BY r.restaurant_name
+ORDER BY total_revenue DESC
+LIMIT 10;
+
+# Top 10 Customers by Orders
+SELECT c.customer_id,
+count(o.order_id) AS Total_orders
+from orders o 
+INNER Join customers c 
+ON o.customer_id = c.customer_id
+Where o.order_status = 'Delivered'
+Group by c.customer_id
+order by Total_orders DESC limit 10;
+
+# Order Status Distribution
+SELECT order_status,
+count(*) As Total_order
+from orders 
+group by order_status
+order by Total_order DESC;
+
+# Payment Method Analysis: Objective: Find out which payment methods customers use most frequently to place orders.
+SELECT payment_method,
+count(*) As Total_orders
+from orders
+group by payment_method
+order by Total_orders DESC;
+
+# Promotion and Coupon Analysis
+SELECT promo_id,
+count(*) As Total_orders
+from orders
+Where promo_id IS NOT NULL
+group by promo_id
+order by Total_orders DESC;
+
+# Delivery Performance Analysis: Average Delivery Time by Delivery Partner.
+SELECT
+partner_id,
+ROUND(AVG(actual_delivery_minutes), 2)
+AS avg_delivery_minutes
+FROM delivery_tracking
+WHERE actual_delivery_minutes > 0
+GROUP BY partner_id
+ORDER BY avg_delivery_minutes ASC
+LIMIT 10;
+
+# On-Time Delivery by Partner: let's find how many deliveries each partner completed on time and calculate their on-time delivery percentage.
+SELECT
+    partner_id,
+    COUNT(*) AS total_deliveries,
+    SUM(was_on_time = 1) AS on_time_deliveries,
+    ROUND(
+        SUM(was_on_time = 1) * 100.0 / COUNT(*),
+        2
+    ) AS on_time_percentage
+FROM delivery_tracking
+WHERE actual_delivery_minutes > 0
+GROUP BY partner_id
+HAVING COUNT(*) >= 5
+ORDER BY on_time_percentage DESC
+LIMIT 10;
+
+# Delivery Performance by Distance
+SELECT
+    CASE
+        WHEN distance_km <= 2 THEN '0-2 KM'
+        WHEN distance_km <= 5 THEN '2-5 KM'
+        WHEN distance_km <= 10 THEN '5-10 KM'
+        ELSE 'Above 10 KM'
+    END AS distance_range,
+    COUNT(*) AS total_deliveries,
+    ROUND(AVG(actual_delivery_minutes), 2)
+        AS avg_delivery_minutes,
+    ROUND(
+        SUM(was_on_time = 1) * 100.0 / COUNT(*),
+        2
+    ) AS on_time_percentage
+FROM delivery_tracking
+WHERE actual_delivery_minutes > 0
+  AND distance_km IS NOT NULL
+  AND distance_km >= 0
+GROUP BY distance_range
+ORDER BY MIN(distance_km);
+
+# Customer Order Frequency Analysis
+SELECT customer_id,
+COUNT(*) AS total_orders,
+ROUND(SUM(total_amount), 2) AS total_spent
+FROM orders
+WHERE order_status = 'Delivered'
+GROUP BY customer_id
+ORDER BY total_orders DESC
+LIMIT 10;
+
+# Customer Segmentation
+SELECT
+    customer_segment,
+    COUNT(*) AS total_customers
+FROM (
+    SELECT
+        customer_id,
+        CASE
+            WHEN COUNT(*) = 1 THEN 'One-Time'
+            WHEN COUNT(*) BETWEEN 2 AND 5 THEN 'Occasional'
+            ELSE 'Frequent'
+        END AS customer_segment
+    FROM orders
+    WHERE order_status = 'Delivered'
+    GROUP BY customer_id
+) AS customer_groups
+GROUP BY customer_segment
+ORDER BY total_customers DESC;
+
+# Monthly Customer Trend Analysis: Find how many unique customers
+# placed delivered orders each month and identify which months attracted the most customers.
+SELECT
+    DATE_FORMAT(order_date, '%Y-%m') AS order_month,
+    COUNT(DISTINCT customer_id) AS unique_customers,
+    COUNT(*) AS total_delivered_orders
+FROM orders
+WHERE order_status = 'Delivered'
+GROUP BY DATE_FORMAT(order_date, '%Y-%m')
+ORDER BY order_month;
+
+# Monthly Repeat-Customer Analysis
+WITH customer_months AS (
+    SELECT DISTINCT
+        customer_id,
+        DATE_FORMAT(order_date, '%Y-%m') AS order_month
+    FROM orders
+    WHERE order_status = 'Delivered'
+),
+monthly_repeat AS (
+    SELECT
+        current_month.order_month,
+        COUNT(*) AS repeat_customers
+    FROM customer_months current_month
+    WHERE EXISTS (
+        SELECT 1
+        FROM customer_months previous_month
+        WHERE previous_month.customer_id =
+              current_month.customer_id
+          AND previous_month.order_month <
+              current_month.order_month
+    )
+    GROUP BY current_month.order_month
+),
+monthly_customers AS (
+    SELECT
+        order_month,
+        COUNT(*) AS total_customers
+    FROM customer_months
+    GROUP BY order_month
+)
+SELECT
+    m.order_month,
+    m.total_customers,
+    COALESCE(r.repeat_customers, 0) AS repeat_customers,
+    ROUND(
+        COALESCE(r.repeat_customers, 0) * 100.0 /
+        m.total_customers,
+        2
+    ) AS repeat_customer_percentage
+FROM monthly_customers m
+LEFT JOIN monthly_repeat r
+    ON m.order_month = r.order_month
+ORDER BY m.order_month;
+
+# Month-over-Month (MoM) Revenue Growth Analysis
+WITH monthly_revenue AS (
+    SELECT
+        DATE_FORMAT(o.order_date, '%Y-%m') AS order_month,
+        SUM(oi.total_price) AS revenue
+    FROM orders o
+    JOIN order_items oi
+        ON o.order_id = oi.order_id
+    WHERE o.order_status = 'Delivered'
+    GROUP BY DATE_FORMAT(o.order_date, '%Y-%m')
+),
+revenue_comparison AS (
+    SELECT
+        order_month,
+        revenue,
+        LAG(revenue) OVER (
+            ORDER BY order_month
+        ) AS previous_month_revenue
+    FROM monthly_revenue
+)
+SELECT
+    order_month,
+    ROUND(revenue, 2) AS monthly_revenue,
+    ROUND(previous_month_revenue, 2)
+        AS previous_month_revenue,
+    ROUND(
+        (revenue - previous_month_revenue)
+        * 100.0 / NULLIF(previous_month_revenue, 0),
+        2
+    ) AS mom_growth_percentage
+FROM revenue_comparison
+ORDER BY order_month;
+
+# Rank the Top 5 Restaurants by Revenue
+WITH restaurant_revenue AS (
+    SELECT
+        r.restaurant_id,
+        r.restaurant_name,
+        SUM(oi.total_price) AS total_revenue
+    FROM orders o
+    JOIN swiggy_restaurants r
+        ON o.restaurant_id = r.restaurant_id
+    JOIN order_items oi
+        ON o.order_id = oi.order_id
+    WHERE o.order_status = 'Delivered'
+    GROUP BY
+        r.restaurant_id,
+        r.restaurant_name
+),
+restaurant_ranking AS (
+    SELECT
+        restaurant_id,
+        restaurant_name,
+        total_revenue,
+        DENSE_RANK() OVER (
+            ORDER BY total_revenue DESC
+        ) AS revenue_rank
+    FROM restaurant_revenue
+)
+SELECT
+    revenue_rank,
+    restaurant_id,
+    restaurant_name,
+    ROUND(total_revenue, 2) AS total_revenue
+FROM restaurant_ranking
+WHERE revenue_rank <= 5
+ORDER BY revenue_rank;
+
+# Create a Monthly Revenue View
+CREATE OR REPLACE VIEW vw_monthly_revenue AS
+SELECT
+    DATE_FORMAT(o.order_date, '%Y-%m') AS order_month,
+    COUNT(DISTINCT o.order_id) AS total_orders,
+    ROUND(SUM(oi.total_price), 2) AS total_revenue
+FROM orders o
+JOIN order_items oi
+    ON o.order_id = oi.order_id
+WHERE o.order_status = 'Delivered'
+GROUP BY DATE_FORMAT(o.order_date, '%Y-%m');
+SELECT * FROM vw_monthly_revenue ORDER BY order_month;
+
+# Create a Restaurant Performance View
+CREATE OR REPLACE VIEW vw_restaurant_performance AS
+SELECT
+    r.restaurant_id,
+    r.restaurant_name,
+    COUNT(DISTINCT o.order_id) AS delivered_orders,
+    ROUND(SUM(oi.total_price), 2) AS total_revenue
+FROM orders o
+JOIN swiggy_restaurants r
+    ON o.restaurant_id = r.restaurant_id
+JOIN order_items oi
+    ON o.order_id = oi.order_id
+WHERE o.order_status = 'Delivered'
+GROUP BY
+    r.restaurant_id,
+    r.restaurant_name;
+    
+SELECT * FROM vw_restaurant_performance ORDER BY total_revenue DESC LIMIT 10;
+
+# Create a Delivery Performance SQL View
+CREATE OR REPLACE VIEW vw_delivery_performance AS
+SELECT
+    COUNT(*) AS total_deliveries,
+    SUM(was_on_time = 1) AS on_time_deliveries,
+    SUM(was_on_time = 0) AS late_deliveries,
+    ROUND(
+        AVG(actual_delivery_minutes), 2
+    ) AS avg_delivery_minutes,
+    ROUND(
+        SUM(was_on_time = 1) * 100.0 / COUNT(*),
+        2
+    ) AS on_time_percentage
+FROM delivery_tracking
+WHERE actual_delivery_minutes > 0;
+
+SELECT * FROM vw_delivery_performance;
